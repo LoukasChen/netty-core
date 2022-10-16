@@ -1,10 +1,15 @@
-package com.csp.netty.nio;
+package com.csp.nio;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.*;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -105,14 +110,40 @@ public class Server {
         selectionKey.interestOps(SelectionKey.OP_ACCEPT);
         serverSocketChannel.bind(new InetSocketAddress(8080));
         while (true) {
+            // select方法，没有事件发生，线程阻塞，有事件发生，线程恢复运行
+            // select在事件未处理时，不会阻塞，事件发生后要么处理，要么取消，不能不处理
             selector.select();
             Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
             while (iterator.hasNext()) {
                 SelectionKey key = iterator.next();
+                // 处理key时，需要将当前的key移除
+                iterator.remove();
                 log.info("key:{}", key);
-                ServerSocketChannel channel = (ServerSocketChannel) key.channel();
-                SocketChannel accept = channel.accept();
-                log.info("{}", accept);
+                if (key.isAcceptable()) {
+                    ServerSocketChannel channel = (ServerSocketChannel) key.channel();
+                    SocketChannel accept = channel.accept();
+                    accept.configureBlocking(false);
+                    SelectionKey scKey = accept.register(selector, 0, null);
+                    scKey.interestOps(SelectionKey.OP_READ);
+                } else if (key.isReadable()) {
+                    try {
+                        // TLV Type Length Value
+                        SocketChannel channel = (SocketChannel) key.channel();
+                        ByteBuffer buffer = ByteBuffer.allocate(4);
+                        int read = channel.read(buffer);
+                        if (read == -1) {
+                            key.cancel();
+                        } else {
+                            buffer.flip();
+                            log.info("{}", Charset.defaultCharset().decode(buffer));
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        key.cancel();
+                    }
+                }
+                // 事件取消
+//                key.cancel();
             }
         }
     }
