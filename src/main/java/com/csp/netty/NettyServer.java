@@ -1,9 +1,7 @@
 package com.csp.netty;
 
 import io.netty.bootstrap.ServerBootstrap;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.ChannelInitializer;
+import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
@@ -19,19 +17,28 @@ public class NettyServer {
 
     public static void main(String[] args) {
         new ServerBootstrap()
-                .group(new NioEventLoopGroup())
+                // boss worker
+                .group(new NioEventLoopGroup(), new NioEventLoopGroup())
                 .channel(NioServerSocketChannel.class)
                 .childHandler(new ChannelInitializer<NioSocketChannel>() {
                     @Override
                     protected void initChannel(NioSocketChannel nsc) throws Exception {
                         nsc.pipeline().addLast(new StringDecoder());
-                        nsc.pipeline().addLast(new ChannelInboundHandlerAdapter() {
+                        nsc.pipeline().addLast("handler1", new ChannelInboundHandlerAdapter() {
+                            @Override
+                            public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                                log.info("{}", msg);
+                                // 转交给下一个handler
+                                ctx.fireChannelRead(msg);
+                            }
+                        }).addLast(new DefaultEventLoopGroup(), "handler2", new ChannelInboundHandlerAdapter() {
                             @Override
                             public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
                                 log.info("{}", msg);
                             }
                         });
                     }
-                }).bind(8080);
+                })
+                .bind(8080);
     }
 }
